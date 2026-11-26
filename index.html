@@ -23,7 +23,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
 <p id="status" role="status" aria-live="polite" class="status">Ready to draw. Upload a PDF to replace the question bank or answer keys.</p>
 <section id="cards" class="grid" hidden></section><div class="empty" id="empty">Click <strong>Draw New Random Questions</strong> to display three questions.</div>
 <details class="bank" id="bankBox"><summary id="bankSummary">Active random-draw bank</summary><p id="bankList"></p></details>
-<section class="finalPanel" id="finalSetup" hidden><h3>Final exam — question groups</h3><p>Each draw includes <b>one question from Group 1 (1–15)</b>, <b>one from Group 3 (31–315)</b>, and <b>one from Group 5 (51–517)</b>. The groups are determined automatically by the question number.</p><div id="finalTagList" class="finalTagList"></div><p id="finalTagCount" class="finalTagCount"></p></section>
+<section class="finalPanel" id="finalSetup" hidden><h3>Final exam — question groups</h3><p>Each draw includes <b>one question from Group 1</b>, <b>one from Group 3</b>, and <b>one from Group 5</b>. The groups are determined automatically by the question number.</p><div id="finalTagList" class="finalTagList"></div><p id="finalTagCount" class="finalTagCount"></p></section>
 </main>
 <div id="presentation" class="overlay" hidden><div class="presentShell"><div class="presentHeader"><h2 id="presLabel"></h2><button id="closePresentation">Close ✕</button></div><img class="presentPicture" id="presImage" alt="Question slide"><div class="presentNav"><button id="prev">← Previous</button><span id="counter"></span><button id="next">Next →</button></div></div></div>
 <div id="answerOverlay" class="overlay" hidden><div class="answerPanel"><header><h2 id="answerTitle">Answer Key</h2><button id="closeAnswer">Close ✕</button></header><div id="answerBody"></div></div></div>
@@ -38,18 +38,19 @@ let FINAL_TAGS={};
 let selected=[],drawHistory=emptyHistory(),activeIndex=0,isImporting=false;
 const EXAM_CACHE={midterm:null,final:null};
 const el=id=>document.getElementById(id);
-const groupNames={three:'Statistics · 3 points',threehalf:'Statistics · 3.5 points',R:'R Question · 3.5 points',early:'Group 1 · Questions 1–15',group3:'Group 3 · Questions 31–315',group5:'Group 5 · Questions 51–517'};
+const groupNames={three:'Statistics · 3 points',threehalf:'Statistics · 3.5 points',R:'R Question · 3.5 points',early:'Group 1',group3:'Group 3',group5:'Group 5'};
 const sortNum=(a,b)=>a.localeCompare(b,undefined,{numeric:true});
+function groupLabel(g,ids){return groupNames[g]+(activeExam==='final'&&ids.length?' · Questions '+ids[0]+(ids.length>1?'–'+ids[ids.length-1]:''):'');}
 function emptyHistory(){return {three:[],threehalf:[],R:[],early:[],group3:[],group5:[]};}
 function setStatus(message,kind=''){el('status').textContent=message;el('status').className='status '+kind;}
 function readableImportDate(value){if(!value)return 'date not recorded';const d=new Date(value);return Number.isNaN(d.getTime())?'date not recorded':new Intl.DateTimeFormat('en-US',{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d);}
 // Final groups are fixed by the question ID, never by points or saved tags.
-// Q31–Q39/Q310–Q315 are distinct from Q51–Q59/Q510–Q517.
+// Group 1 uses IDs 1–30; other groups use prefixes 3 and 5 followed by a positive ordinal.
 function defaultFinalTag(q){
   const id=String(q.code).trim();
-  if(/^(?:[1-9]|1[0-5])$/.test(id))return 'early';
-  if(/^3(?:[1-9]|1[0-5])$/.test(id))return 'group3';
-  if(/^5(?:[1-9]|1[0-7])$/.test(id))return 'group5';
+  if(/^(?:[1-9]|[12][0-9]|30)$/.test(id))return 'early';
+  if(/^3[1-9]\d*$/.test(id))return 'group3';
+  if(/^5[1-9]\d*$/.test(id))return 'group5';
   return null;
 }
 function tagOf(q){return defaultFinalTag(q);}
@@ -60,7 +61,7 @@ function bankUI(){
   const matched=BANK.filter(q=>ANSWERS[q.code]).length;
   el('bankSummary').textContent=`${activeExam==='midterm'?'Midterm':'Final'} question bank: ${BANK.length} questions (${breakdown}) · ${Object.keys(ANSWERS).length} answer keys (${matched} matched) · Questions updated: ${readableImportDate(IMPORT_DATES.questions)} · Answers updated: ${readableImportDate(IMPORT_DATES.answers)}`;
   el('bankList').replaceChildren();
-  for(const g of groups){const p=document.createElement('p');p.textContent=groupNames[g]+': '+(BANK.filter(q=>activeExam==='midterm'?q.group===g:tagOf(q)===g).map(q=>q.code).sort(sortNum).join(', ')||'None');el('bankList').append(p);}
+  for(const g of groups){const p=document.createElement('p');const ids=BANK.filter(q=>activeExam==='midterm'?q.group===g:tagOf(q)===g).map(q=>q.code).sort(sortNum);p.textContent=groupLabel(g,ids)+': '+(ids.join(', ')||'None');el('bankList').append(p);}
   el('finalSetup').hidden=activeExam!=='final';
   if(activeExam==='final')renderFinalTags();
 }
@@ -71,7 +72,7 @@ function renderFinalTags(){
   for(const group of groups){
     const p=document.createElement('p');
     const ids=BANK.filter(q=>tagOf(q)===group).map(q=>q.code).sort(sortNum);
-    p.textContent=groupNames[group]+': '+(ids.join(', ')||'None');
+    p.textContent=groupLabel(group,ids)+': '+(ids.join(', ')||'None');
     list.append(p);
   }
   const ready=counts.every(n=>n>0);
@@ -94,7 +95,7 @@ function draw(){
     if(activeExam==='midterm')selected=['three','threehalf','R'].map(g=>pick(g));
     else {
       const groups=['early','group3','group5'];
-      if(groups.some(g=>!BANK.some(q=>tagOf(q)===g)))throw Error('Final Exam requires questions in all three groups: 1–15, 31–315, and 51–517.');
+      if(groups.some(g=>!BANK.some(q=>tagOf(q)===g)))throw Error('Final Exam requires questions in all three groups.');
       selected=groups.map(g=>pick(g));
     }
   }catch(e){drawHistory=oldHistory;setStatus(e.message,'err');return;}
@@ -118,9 +119,9 @@ function showAnswer(code){el('answerTitle').textContent='Question '+code+' — A
 function closeAnswer(){el('answerOverlay').hidden=true;document.body.style.overflow='';}
 let pdfLoader;
 function loadPdfJs(){if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);if(pdfLoader)return pdfLoader;const sources=['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'];pdfLoader=new Promise((resolve,reject)=>{function load(i){if(i>=sources.length){reject(Error('PDF reader library could not load. Check your internet connection and try again.'));return}const s=document.createElement('script');s.src=sources[i];s.onload=()=>{if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc=(i===0?'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js':'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js');resolve(window.pdfjsLib)}else load(i+1)};s.onerror=()=>{s.remove();load(i+1)};document.head.append(s)}load(0)});return pdfLoader.catch(e=>{pdfLoader=null;throw e})}
-function headerFromText(items,mode){const parts=items.map(x=>x.str.trim()).filter(Boolean);const line=parts.slice(0,12).join(' ').replace(/\s+/g,' ');const m=mode==='questions'?line.match(/^(R\s*\d{1,4}|Q?\s*\d{1,4})\s*\(\s*(\d+(?:\.\d+)?)\s*points?\s*\)/i):line.match(/^(R\s*[1-9]\d{0,3}|Q?\s*[1-9]\d{0,3})(?=\s|\(|$)/i);if(!m)return null;let code=m[1].replace(/\s/g,'').toUpperCase().replace(/^Q(?=\d)/,'');let points=mode==='questions'?Number(m[2]):0;let group=code.startsWith('R')?'R':points===3?'three':points===3.5?'threehalf':null;return {code,points,group}}
+function headerFromText(items,mode){const parts=items.map(x=>x.str.trim()).filter(Boolean);const line=parts.slice(0,20).join(' ').replace(/\s+/g,' ').replace(/（/g,'(').replace(/）/g,')');const m=mode==='questions'?line.match(/^(R\s*\d+|Q?\s*\d+)\s*[.:]?\s*\(\s*(\d+(?:\.\d+)?)\s*points?\s*\)/i):line.match(/^(R\s*[1-9]\d*|Q?\s*[1-9]\d*)(?=\s|\(|$)/i);if(!m)return null;let code=m[1].replace(/\s/g,'').toUpperCase().replace(/^Q(?=\d)/,'');let points=mode==='questions'?Number(m[2]):0;let group=code.startsWith('R')?'R':points===3?'three':points===3.5?'threehalf':null;return {code,points,group}}
 async function rasterize(page){const viewport=page.getViewport({scale:1});const targetWidth=1450;const pixelScale=Math.min(targetWidth/viewport.width,2.6);let view=page.getViewport({scale:pixelScale});const canvas=document.createElement('canvas');canvas.width=Math.ceil(view.width);canvas.height=Math.ceil(view.height);let ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);await page.render({canvasContext:ctx,viewport:view}).promise;const image=canvas.toDataURL('image/webp',.92);canvas.width=0;canvas.height=0;return image}
-async function parsePdf(file,mode){const lib=await loadPdfJs();let doc;try{const bytes=new Uint8Array(await file.arrayBuffer());doc=await lib.getDocument({data:bytes,disableAutoFetch:true,useSystemFonts:true}).promise;const rows=[];const seen=new Set();for(let n=1;n<=doc.numPages;n++){let page=await doc.getPage(n);const tc=await page.getTextContent();let header=headerFromText(tc.items,mode);if(header){if(seen.has(header.code))throw Error('Duplicate question number '+header.code+' on page '+n);seen.add(header.code);const image=await rasterize(page);rows.push({...header,image,page:n})}if(n%2===0||n===doc.numPages){setStatus('Reading '+(mode==='questions'?'questions':'answer keys')+' PDF: '+n+'/'+doc.numPages+' pages…');await new Promise(r=>requestAnimationFrame(r))}}if(!rows.length)throw Error('No numbered '+(mode==='questions'?'question':'answer')+' slides found. Ensure the PDF retains selectable title text, such as “27 (3.5 points)” or “R7”.');if(mode==='questions'&&activeExam==='midterm'&&['three','threehalf','R'].some(g=>!rows.some(row=>row.group===g)))throw Error('Midterm PDF must contain a 3-point statistics question, a 3.5-point statistics question, and an R question.');return {rows,pages:doc.numPages}}finally{try{await doc?.destroy()}catch(e){console.warn(e)}}}
+async function parsePdf(file,mode){const lib=await loadPdfJs();let doc;try{const bytes=new Uint8Array(await file.arrayBuffer());doc=await lib.getDocument({data:bytes,disableAutoFetch:true,useSystemFonts:true}).promise;const rows=[];const seen=new Set();const skipped=[];for(let n=1;n<=doc.numPages;n++){let page=await doc.getPage(n);const tc=await page.getTextContent();let header=headerFromText(tc.items,mode);if(header){if(seen.has(header.code))throw Error('Duplicate question number '+header.code+' on page '+n);seen.add(header.code);const image=await rasterize(page);rows.push({...header,image,page:n})}else skipped.push(n);if(n%2===0||n===doc.numPages){setStatus('Reading '+(mode==='questions'?'questions':'answer keys')+' PDF: '+n+'/'+doc.numPages+' pages…');await new Promise(r=>requestAnimationFrame(r))}}if(!rows.length)throw Error('No numbered '+(mode==='questions'?'question':'answer')+' slides found. Ensure the PDF retains selectable title text, such as “27 (3.5 points)” or “R7”.');if(mode==='questions'&&activeExam==='midterm'&&['three','threehalf','R'].some(g=>!rows.some(row=>row.group===g)))throw Error('Midterm PDF must contain a 3-point statistics question, a 3.5-point statistics question, and an R question.');if(mode==='questions'&&activeExam==='final'){const bad=rows.filter(q=>!tagOf(q));if(bad.length)throw Error('Unclassified question IDs: '+bad.map(q=>q.code).join(', '));if(['early','group3','group5'].some(g=>!rows.some(q=>tagOf(q)===g)))throw Error('Final PDF must contain all three groups.');if(skipped.length)throw Error('Unrecognized question PDF pages: '+skipped.join(', ')+'. Previous bank retained; check the slide titles.');}return {rows,pages:doc.numPages,skipped}}finally{try{await doc?.destroy()}catch(e){console.warn(e)}}}
 
 // Critical compatibility: the original Midterm IndexedDB database name remains unchanged.
 // The Final Exam uses its own database and never overwrites Midterm PDFs or answers.
@@ -134,7 +135,7 @@ async function activateExam(exam){
   if(isImporting)return;
   if(exam!==activeExam){EXAM_CACHE[activeExam]=snapshot();activeExam=exam;}
   el('examSelect').value=exam;el('examBrand').textContent=exam==='midterm'?'MPH 503 · MID-TERM ORAL EXAMINATION':'MPH 503 · FINAL ORAL EXAMINATION';
-  el('examHelp').textContent=exam==='midterm'?'1 × 3-point Statistics · 1 × 3.5-point Statistics · 1 × R':'Question 1: 1–15 · Question 2: 31–315 · Question 3: 51–517';
+  el('examHelp').textContent=exam==='midterm'?'1 × 3-point Statistics · 1 × 3.5-point Statistics · 1 × R':'One question from each final exam group';
   el('examSelect').disabled=true;el('draw').disabled=true;
   let state=EXAM_CACHE[exam];
   if(!state){try{state=await readSaved(exam);}catch(e){console.warn('Cannot read saved exam bank:',e);} }
@@ -162,7 +163,7 @@ async function upload(ev,mode){
     let saved=true;try{await persist();}catch(e){saved=false;console.warn('Saving failed:',e);}
     const n=mode==='questions'?BANK.length:Object.keys(ANSWERS).length;
     const missing=BANK.filter(q=>!ANSWERS[q.code]).map(q=>q.code);
-    setStatus((mode==='questions'?'QUESTIONS UPDATED: ':'ANSWER KEYS UPDATED: ')+n+(newCodes.length?' · New: '+newCodes.join(', '):'')+(missing.length?' · Missing answers: '+missing.join(', '):'')+(activeExam==='final'&&mode==='questions'?' · Groups checked by number: 1–15 / 31–315 / 51–517.':'')+(saved?'':' · Warning: could not save in browser.'),'ok');
+    setStatus((mode==='questions'?'QUESTIONS UPDATED: ':'ANSWER KEYS UPDATED: ')+n+(newCodes.length?' · New: '+newCodes.join(', '):'')+(missing.length?' · Missing answers: '+missing.join(', '):'')+(activeExam==='final'&&mode==='questions'?' · All imported question IDs classified.':'')+(imported.skipped.length?' · Unrecognized PDF pages: '+imported.skipped.join(', '):'')+(saved?'':' · Warning: could not save in browser.'),'ok');
     if(mode==='questions')el('bankBox').open=true;
   }catch(e){applyState(before);setStatus('PDF update failed: '+e.message,'err');console.error(e);}
   finally{isImporting=false;for(const id of ['examSelect','draw','reset','uploadQuestions','uploadAnswers'])el(id).disabled=false;ev.target.value='';}
