@@ -12,10 +12,12 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
 .overlay[hidden],#gate[hidden],.grid[hidden],.empty[hidden]{display:none!important}.overlay{position:fixed;inset:0;z-index:9;background:rgba(8,25,52,.88);display:flex;align-items:center;justify-content:center;padding:22px}.presentShell{width:min(96vw,1500px);max-height:98vh;display:flex;flex-direction:column;gap:12px}.presentHeader{display:flex;align-items:center;justify-content:space-between;gap:15px;color:white}.presentHeader h2{margin:0;font-size:24px}.presentPicture{width:100%;max-height:calc(100vh - 170px);aspect-ratio:16/9;object-fit:contain;background:white}.presentNav{display:flex;align-items:center;justify-content:space-between;gap:10px;color:white}.answerPanel{width:min(94vw,1280px);max-height:94vh;overflow:auto;background:white;border-radius:20px}.answerPanel header{position:sticky;top:0;background:white;border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;justify-content:space-between}.answerPanel h2{margin:0}.answerPanel img{display:block;width:100%;height:auto}.missing{padding:60px 20px;text-align:center}
 #gate{position:fixed;inset:0;z-index:20;background:#0b1931;display:flex;align-items:center;justify-content:center}#gate form{background:white;border-radius:18px;padding:30px;width:min(90vw,405px);display:flex;flex-direction:column;gap:14px}#gate h2{margin:0}#gate input{font:inherit;padding:12px 14px;border:1px solid #b1c3db;border-radius:9px}.error{color:#b42c23;font-size:13px;min-height:1em}
 @media(max-width:960px){.grid{grid-template-columns:1fr}.wrap{padding:15px}.picture{max-height:none}}
+
+#examGate[hidden],main[hidden],#examSelect[hidden]{display:none!important}#examGate{position:fixed;inset:0;z-index:19;background:#0b1931;display:grid;place-items:center;padding:20px}.examChoice{background:white;border-radius:18px;padding:30px;width:min(650px,100%);text-align:center}.examChoices{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:24px 0}.examChoices button{padding:32px 12px;color:white;background:#214f93;font-size:18px}.examChoices button[data-exam=final]{background:#166534}body[data-exam=final]{--blue:#166534}.examCurrent{padding:12px 16px;background:var(--blue);color:white;border-radius:10px;font-weight:800}.examBar .examCurrent{color:white;font-size:16px}
 </style></head><body>
 <div id="gate"><form id="unlock"><h2>Oral Exam Question Randomizer</h2><label for="password">Password</label><input id="password" type="password" autocomplete="off" required><button class="primary" type="submit">Unlock</button><span id="passwordError" class="error"></span></form></div>
-<main class="wrap"><div class="brand" id="examBrand">MPH 503 · MID-TERM ORAL EXAMINATION</div><h1>Oral Exam Question Randomizer</h1>
-<div class="examBar"><label for="examSelect">Examination</label><select id="examSelect"><option value="midterm">Midterm Exam</option><option value="final">Final Exam</option></select><span id="examHelp">Midterm question bank</span></div>
+<div id="examGate" hidden><section class="examChoice"><h2>Oral Exam Question Randomizer</h2><p>Select the examination</p><div class="examChoices"><button data-exam="midterm">MIDTERM EXAM</button><button data-exam="final">FINAL EXAM</button></div><button id="backLogin">Back to login</button></section></div><main class="wrap" id="examMain" hidden><div class="brand" id="examBrand">MPH 503 · MID-TERM ORAL EXAMINATION</div><h1>Oral Exam Question Randomizer</h1>
+<div class="examBar"><span id="examCurrent" class="examCurrent"></span><button id="backExam">Back to Exam Selection</button><select id="examSelect" hidden><option value="midterm">Midterm Exam</option><option value="final">Final Exam</option></select><span id="examHelp">Midterm question bank</span></div>
 <div class="actions"><button id="draw" class="primary">Draw New Random Questions</button><button id="present" disabled>Present to Student</button><button id="lock">Lock</button></div>
 <div class="upload"><button id="reset">Reset Draw History</button><button id="uploadQuestions">Upload Questions (PDF)</button><button id="uploadAnswers">Upload Answer Keys (PDF)</button></div>
 <input id="questionsFile" type="file" accept="application/pdf,.pdf" hidden><input id="answersFile" type="file" accept="application/pdf,.pdf" hidden>
@@ -145,8 +147,8 @@ function emptyFinalState(){return {BANK:[],ANSWERS:{},IMPORT_DATES:{questions:nu
 function applyState(state){BANK=state.BANK||[];ANSWERS=state.ANSWERS||{};IMPORT_DATES=state.IMPORT_DATES||{questions:null,answers:null};FINAL_TAGS=state.FINAL_TAGS||{};drawHistory={...emptyHistory(),...(state.drawHistory||{})};clearCards();bankUI();}
 async function activateExam(exam){
   if(isImporting)return;
-  if(exam!==activeExam){EXAM_CACHE[activeExam]=snapshot();activeExam=exam;}
-  el('examSelect').value=exam;el('examBrand').textContent=exam==='midterm'?'MPH 503 · MID-TERM ORAL EXAMINATION':'MPH 503 · FINAL ORAL EXAMINATION';
+  if(exam!==activeExam){if(EXAM_CACHE[activeExam])EXAM_CACHE[activeExam]=snapshot();activeExam=exam;}
+  el('examSelect').value=exam;document.body.dataset.exam=exam;const label=exam==='final'?'Final':'Midterm';el('examCurrent').textContent=label.toUpperCase()+' EXAM';el('uploadQuestions').textContent='Upload '+label+' Questions (PDF)';el('uploadAnswers').textContent='Upload '+label+' Answer Keys (PDF)';el('examBrand').textContent=exam==='midterm'?'MPH 503 · MID-TERM ORAL EXAMINATION':'MPH 503 · FINAL ORAL EXAMINATION';
   el('examHelp').textContent=exam==='midterm'?'1 × 3-point Statistics · 1 × 3.5-point Statistics · 1 × R':'One question from each final exam group';
   el('examSelect').disabled=true;el('draw').disabled=true;
   let state=EXAM_CACHE[exam];
@@ -160,7 +162,7 @@ async function activateExam(exam){
 async function upload(ev,mode){
   const f=ev.target.files?.[0];if(!f)return;
   const before=snapshot();isImporting=true;
-  for(const id of ['examSelect','draw','reset','uploadQuestions','uploadAnswers'])el(id).disabled=true;
+  for(const id of ['examSelect','backExam','lock','draw','reset','uploadQuestions','uploadAnswers'])el(id).disabled=true;
   try{
     if(!(/\.pdf$/i.test(f.name)||f.type==='application/pdf'))throw Error('Please upload a PDF file.');
     setStatus('Opening '+f.name+'…');const imported=await parsePdf(f,mode);
@@ -183,7 +185,7 @@ async function upload(ev,mode){
     setStatus((mode==='questions'?'QUESTIONS UPDATED: ':'ANSWER KEYS UPDATED: ')+n+(newCodes.length?' · New: '+newCodes.join(', '):'')+(missing.length?' · Missing answers: '+missing.join(', '):'')+(activeExam==='final'&&mode==='questions'?' · All imported question IDs classified.':'')+(imported.covers.length?' · Cover page skipped: '+imported.covers.join(', '):'')+(saved?'':' · Warning: could not save in browser.'),'ok');
     if(mode==='questions')el('bankBox').open=true;
   }catch(e){applyState(before);setStatus('PDF update failed: '+e.message,'err');console.error(e);}
-  finally{isImporting=false;for(const id of ['examSelect','draw','reset','uploadQuestions','uploadAnswers'])el(id).disabled=false;ev.target.value='';}
+  finally{isImporting=false;for(const id of ['examSelect','backExam','lock','draw','reset','uploadQuestions','uploadAnswers'])el(id).disabled=false;ev.target.value='';}
 }
 for(const [btn,input] of [['uploadQuestions','questionsFile'],['uploadAnswers','answersFile']])el(btn).addEventListener('click',()=>el(input).click());
 el('questionsFile').addEventListener('change',e=>upload(e,'questions'));
@@ -198,7 +200,11 @@ el('closePresentation').addEventListener('click',closeQuestion);el('closeAnswer'
 el('presentation').addEventListener('click',e=>{if(e.target===el('presentation'))closeQuestion();});
 el('answerOverlay').addEventListener('click',e=>{if(e.target===el('answerOverlay'))closeAnswer();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeQuestion();closeAnswer();}});
-el('unlock').addEventListener('submit',e=>{e.preventDefault();if(el('password').value==='001122'){el('gate').hidden=true;el('passwordError').textContent='';el('password').value='';}else{el('passwordError').textContent='Incorrect password';el('password').value='';}});
-el('lock').addEventListener('click',()=>{closeAnswer();closeQuestion();el('gate').hidden=false;el('password').focus();});
-activateExam('midterm');
+el('unlock').addEventListener('submit',e=>{e.preventDefault();if(el('password').value==='001122'){el('gate').hidden=true;el('examGate').hidden=false;el('examMain').hidden=true;el('passwordError').textContent='';el('password').value='';}else{el('passwordError').textContent='Incorrect password';el('password').value='';}});
+el('lock').addEventListener('click',()=>{closeAnswer();closeQuestion();el('examMain').hidden=true;el('examGate').hidden=true;el('gate').hidden=false;el('password').focus();});
+let choosing=false;
+for(const btn of document.querySelectorAll('#examGate [data-exam]'))btn.addEventListener('click',async()=>{if(choosing||isImporting)return;choosing=true;const buttons=el('examGate').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);try{await activateExam(btn.dataset.exam);el('examGate').hidden=true;el('examMain').hidden=false;}finally{choosing=false;buttons.forEach(b=>b.disabled=false);}});
+el('backExam').addEventListener('click',()=>{if(isImporting)return;closeAnswer();closeQuestion();el('examMain').hidden=true;el('examGate').hidden=false;});
+el('backLogin').addEventListener('click',()=>{el('examGate').hidden=true;el('gate').hidden=false;el('password').focus();});
+
 </script></body></html>
